@@ -1,0 +1,14 @@
+<launch>
+
+    <node name="map_validation_tool" pkg="map_validation_tool" type="map_validation_tool" output="screen">
+        <param name="map_file_name" type="string" value="$(env HOME)/Downloads/intel_lab" />
+        <param name="traj_bag_file_name" type="string" value="$(env HOME)/Downloads/intel_lab/estimated_trajectory.bag" />
+        <param name="lscan_bag_file_name" type="string" value="$(env HOME)/Downloads/intel_lab/intel_lab.bag" />
+        <param name="laser_frame" type="string" value="laser" />
+        <param name="map_frame" type="string" value="map" />
+        <param name="lscan_topic_name" type="string" value="laser" />
+        <param name="base_frame" type="string" value="laser" />
+        <param name="map_frame" type="string" value="map" />
+    </node>
+
+</launch>
