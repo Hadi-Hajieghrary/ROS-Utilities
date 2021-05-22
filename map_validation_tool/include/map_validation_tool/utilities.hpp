@@ -12,6 +12,7 @@
 #include <fstream>
 #include <array>
 #include <vector>
+#include <map>
 #include <SDL/SDL_image.h>
 
 enum class MapMode {TRINARY, SCALE, RAW};
@@ -205,38 +206,39 @@ void loadMap(const std::string file_address, const std::string file_name, nav_ms
     }else{
         number_of_color_channels = number_of_channels - 1;
     }
-
-    for(int j = 0; j < map->info.height; j++){
-        
-        for (int i = 0; i < map->info.width; i++){
+    for (int i = 0; i < map->info.width; i++){
+        for(int j = 0; j < map->info.height; j++){
 
             int color_sum = 0;
             for(int k = 0; k<number_of_color_channels; k++){
                 color_sum += *(pixels + j*rowstride + i*number_of_channels + k);
             }
-            double average_color = static_cast<double>(color_sum) / static_cast<double>(number_of_color_channels);
+            uint8_t average_color = color_sum / number_of_color_channels;
             double alpha;
-            if (number_of_channels == 1)
+            if (number_of_channels == 1){
                 alpha = 1.0;
-            else
+            }else{
                 alpha = *(pixels + j*rowstride + i*number_of_channels + number_of_channels - 1);
-
-            if(map_info.negate){
-                average_color = 255 - average_color;
             }
+            
             if(map_info.mode == MapMode::RAW){
                 map->data[map->info.width * (map->info.height - j - 1) + i] = average_color;
             }else{
-                double occ = average_color / 255.0;
-                if (map_info.negate) occ = 1 - occ;
-                if(occ > map_info.occupied_thresh){
-                    map->data[map->info.width * (map->info.height - j - 1) + i] = 100;
-                }else if (occ < map_info.free_thresh){
-                    map->data[map->info.width * (map->info.height - j - 1) + i] = 0;
-                }else if(map_info.mode==MapMode::TRINARY || alpha < 1.0){
-                    map->data[map->info.width * (map->info.height - j - 1) + i] = -1;
+                double occ_probability;
+                if(!map_info.negate){
+                    occ_probability = 1.0 - static_cast<double>(average_color) / 255.0;
                 }else{
-                    map->data[map->info.width * (map->info.height - j - 1) + i] = 1 + 98 * (occ - map_info.free_thresh) / (map_info.occupied_thresh - map_info.free_thresh);
+                    occ_probability = static_cast<double>(average_color) / 255.0;
+                }
+                if(occ_probability > map_info.occupied_thresh){
+                    map->data[map->info.width * (map->info.height - j - 1) + i] = 100;  // occupied
+                }else if (occ_probability < map_info.free_thresh){
+                    map->data[map->info.width * (map->info.height - j - 1) + i] = 0;    // free
+                }else if(map_info.mode==MapMode::TRINARY || alpha < 1.0){
+                    map->data[map->info.width * (map->info.height - j - 1) + i] = 255;   // unknown
+                }else{
+                    map->data[map->info.width * (map->info.height - j - 1) + i] = 1 + 98 * ( (occ_probability - map_info.free_thresh) 
+                                                                                                                / (map_info.occupied_thresh - map_info.free_thresh) );
                 }
             }
         }
@@ -248,6 +250,7 @@ void loadMap(const std::string file_address, const std::string file_name, nav_ms
 void saveMap(const nav_msgs::OccupancyGrid::Ptr& map, const std::string file_address, const std::string file_name,
                 MapMode map_mode, double free_thresh = 0.65, double occupied_thresh = 0.15, bool negate = false )
 {
+    std::map<unsigned char,int> counter;
 
     const std::string pgm_file_ext(".pgm");
     std::string pgm_file_name("");
@@ -288,20 +291,18 @@ void saveMap(const nav_msgs::OccupancyGrid::Ptr& map, const std::string file_add
     }
     fprintf(file, "P5\n# CREATOR: HH_OF %.3f m/pix\n%d %d\n255\n",
             map->info.resolution, map->info.width, map->info.height);
-
+    
     if(map_info.mode == MapMode::TRINARY){
-        for(int x = 0; x < map->info.width; x++) {
-            for(int y = 0; y < map->info.height; y++) {
+        for(int y = 0; y < map->info.height; y++) {
+            for(int x = 0; x < map->info.width; x++) {
                 int i = x + (map->info.height - y - 1) * map->info.width;
-                double map_value;
-                map_value = map->data[i];
-                if (negate) map_value = 255 - map_value;
-                if (map_value >= 0 && map_value <= 100*free_thresh) { 
-                    fputc(negate?100:0, file);
-                } else if (map_value > 100*occupied_thresh) {
-                    fputc(negate?0:100, file);
-                } else { 
-                    fputc(-1, file);
+                if (map->data[i] == 100) { 
+                    fputc(negate? 254: 0, file); // occupied
+                } else if (map->data[i] == 0 ) {
+                    fputc(negate? 0:254, file); // free
+                } else if (map->data[i] == -1) { 
+                    int8_t avg = (occupied_thresh + free_thresh)/2.0 * 127 + 127;
+                    fputc(negate? 254 - avg: avg, file); // unkown
                 }
             }
         }
@@ -309,30 +310,23 @@ void saveMap(const nav_msgs::OccupancyGrid::Ptr& map, const std::string file_add
         for(int y = 0; y < map->info.height; y++) {
             for(int x = 0; x < map->info.width; x++) {
                 int i = x + (map->info.height - y - 1) * map->info.width;
-                double map_value;
-                map_value = map->data[i];
-                if (negate) map_value = 255 - map_value;
-                fputc(map_value, file);
+                fputc((negate? map->data[i]: 254 - map->data[i]), file);
             }
         } 
     }else if(map_info.mode == MapMode::SCALE){
         for(int y = 0; y < map->info.height; y++) {
             for(int x = 0; x < map->info.width; x++) {
                 int i = x + (map->info.height - y - 1) * map->info.width;
-                double map_value;
-                map_value = map->data[i] / 255.0;
-                if (negate) map_value = 1 - map_value;
-                if(map_value > map_info.occupied_thresh){
-                    fputc(100, file);
-                }else if (map_value < map_info.free_thresh){
-                    fputc(0, file);
-                }else{
-                    map_value = 1 + 98 * (map_value - map_info.free_thresh) 
-                                        / (map_info.occupied_thresh - map_info.free_thresh);
-                    fputc(map_value, file);
+                if (map->data[i] == 100) { 
+                    fputc(negate? 255: 0, file); // occupied
+                } else if (map->data[i] == 0 ) {
+                    fputc(negate? 0: 255, file); // free
+                } else { 
+                    uint8_t val = 255 * (static_cast<double>(map->data[i])-1.0)*(occupied_thresh - free_thresh)/98.0 + free_thresh;
+                    fputc(negate? 255 - val: val, file); // unkown
                 }
             }
-        } 
+        }
     }
 
     fclose(file);

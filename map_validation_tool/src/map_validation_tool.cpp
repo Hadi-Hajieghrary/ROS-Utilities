@@ -174,9 +174,9 @@ MapInfo map_info;
 readYAML(file_address_yaml, file_name_yaml, map_info);
 nav_msgs::OccupancyGrid::Ptr map;
 loadMap(file_address_pgm, map_info.image_name, map, map_info);
-saveMap(map, file_address_pgm, "HH_OF_raw", MapMode::RAW);
-saveMap(map, file_address_pgm, "HH_OF_trinary", MapMode::TRINARY);
-saveMap(map, file_address_pgm, "HH_OF_scale", MapMode::SCALE);
+saveMap(map, file_address_pgm, "HH_OF_raw", MapMode::RAW, map_info.free_thresh, map_info.occupied_thresh);
+saveMap(map, file_address_pgm, "HH_OF_trinary", MapMode::TRINARY, map_info.free_thresh, map_info.occupied_thresh);
+saveMap(map, file_address_pgm, "HH_OF_scale", MapMode::SCALE, map_info.free_thresh, map_info.occupied_thresh);
 /*
 nav_msgs::OccupancyGrid::Ptr inflated_map;
 inflateMap(map, inflated_map);
